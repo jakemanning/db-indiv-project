@@ -14,16 +14,12 @@ public class Credentials {
     public final String username;
     public final String password;
 
-    public Credentials() {
+    public Credentials() throws IOException {
         Properties properties = new Properties();
-        try {
-            FileInputStream inputStream = new FileInputStream("credentials.txt");
-            properties.load(inputStream);
-            inputStream.close();
-        } catch (IOException e) {
-            System.err.println("Please include a config file");
-            e.printStackTrace();
-        }
+        FileInputStream inputStream = new FileInputStream("credentials.txt");
+        properties.load(inputStream);
+        inputStream.close();
+
         username = properties.getProperty("username");
         password = properties.getProperty("password");
     }
