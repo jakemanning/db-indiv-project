@@ -16,11 +16,10 @@ public class Credentials {
 
     public Credentials() throws IOException {
         Properties properties = new Properties();
-        FileInputStream inputStream = new FileInputStream("credentials.txt");
-        properties.load(inputStream);
-        inputStream.close();
-
-        username = properties.getProperty("username");
-        password = properties.getProperty("password");
+        try(FileInputStream inputStream = new FileInputStream("credentials.txt")) {
+            properties.load(inputStream);
+            username = properties.getProperty("username");
+            password = properties.getProperty("password");
+        }
     }
 }

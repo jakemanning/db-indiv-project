@@ -1,35 +1,32 @@
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Statement;
+import java.sql.*;
 import java.util.InputMismatchException;
 import java.util.Scanner;
 
 public class OptionManager {
 
-    private final Statement statement;
+    private final Connection connection;
+    private Scanner scanner;
 
-    public OptionManager(final Statement statement) throws SQLException {
-        this.statement = statement;
+    public OptionManager(final Connection connection) throws SQLException {
+        this.connection = connection;
     }
 
     public void handleOptions() throws SQLException {
-        createTable();
-        Scanner scanner = new Scanner(System.in);
-        int input = getUserInput(scanner);
-        while(input != Option.QUIT.value) {
-            handleInput(input);
-            input = getUserInput(scanner);
+        try(final Scanner scanner = new Scanner(System.in)) {
+            this.scanner = scanner;
+            int input = getUserOption();
+            while(input != Option.QUIT.value) {
+                handleInput(input);
+                input = getUserOption();
+            }
+            System.out.println("Thank you for using BoomerSQLer");
         }
-
-        System.out.println("Thank you for using BoomerSQLer");
-        dropTable();
-        scanner.close();
     }
 
-    private int getUserInput(final Scanner scanner) {
+    private int getUserOption() {
         try {
             System.out.print("Enter a number (1-4): ");
-            int input = scanner.nextInt();
+            final int input = scanner.nextInt();
             scanner.nextLine();
             return input;
         } catch(InputMismatchException i) {
@@ -44,52 +41,66 @@ public class OptionManager {
         } else if(input == Option.COMPENSATE.value) {
             compensateTranslators();
         } else if(input == Option.DISPLAY.value) {
-            displayCustomers();
+            display();
         } else {
             System.out.println("Invalid input.");
         }
     }
 
-    private void createTable() throws SQLException {
-        String createTable = "create table customer (" +
-                "cid NUMBER," +
-                "cname VARCHAR(30)," +
-                "number_of_orders NUMBER," +
-                "PRIMARY KEY (cid))";
-        statement.executeUpdate(createTable);
+    private void insertCustomer() throws SQLException {
+        final String cid = getProcedureArgs("Enter cid");
+        final String cname = getProcedureArgs("Enter cname");
+        final String clevel = getProcedureArgs("Enter clevel");
+
+        try(final CallableStatement pstmt = connection.prepareCall("{call book_package.insert_customer(?,?,?)}")) {
+            pstmt.setString(1, cid);
+            pstmt.setString(2, cname);
+            pstmt.setString(3, clevel);
+            pstmt.executeUpdate();
+        }
+        System.out.format("Inserted (%s, %s, %s)\n", cid, cname, clevel);
     }
 
-    private void insertCustomer() throws SQLException {
-        // TODO
-        //         Assume that the value of number_of_orders is not known, and will be estimated using the current information in
-        //        the database. The number_of_orders value should be set to the rounded average of the number_of_orders
-        //        values for all the other customers with the same level. If there is no such customer, the new customer’s
-        //        number_of_orders should be set to the rounded average of number_of_orders of all the existing
-        //        customers
-        System.out.println("Inserting Customer(s)");
-        String insertCustomer1 = "insert into customer values (100, 'customer 1', 2)";
-        String insertCustomer2 = "insert into customer values (200, 'customer 2', 5)";
-        statement.executeUpdate(insertCustomer1);
-        statement.executeUpdate(insertCustomer2);
+    private String getProcedureArgs(final String message) {
+        System.out.print(message + ": ");
+        return scanner.nextLine();
     }
 
     private void compensateTranslators() throws SQLException {
-        System.out.println("Compensating Translators");
+        final String aname = getProcedureArgs("Enter aname");
+
+        try(final CallableStatement pstmt = connection.prepareCall("{call book_package.compensate_translators(?)}")) {
+            pstmt.setString(1, aname);
+            pstmt.executeUpdate();
+        }
+        System.out.println("Updated Translator Salaries based on " + aname);
     }
 
-    private void displayCustomers() throws SQLException {
-        System.out.println("Displaying Customers");
-
-        ResultSet rset = statement.executeQuery("select * from customer");
-        System.out.println("Customer ID, Customer Name, Customer orders");
-        while(rset.next()) {
-            System.out.format("%1$-13s%2$-15s%3$-15s\n",
-                    rset.getString(1), rset.getString(2), rset.getString(3));
+    private void display() throws SQLException {
+        try(final Statement statement = connection.createStatement()) {
+            displayCustomers(statement);
+            displayTranslators(statement);
         }
     }
 
-    private void dropTable() throws SQLException {
-        statement.executeUpdate("drop table customer");
+    private void displayCustomers(final Statement statement) throws SQLException {
+        System.out.println("Customer ID, Customer Name, Customer orders, Customer level");
+        try(final ResultSet rset = statement.executeQuery("select * from customer")) {
+            while (rset.next()) {
+                System.out.format("%1$-13s%2$-15s%3$-15s%4$-10s\n",
+                        rset.getInt(1), rset.getString(2), rset.getInt(3), rset.getString(4));
+            }
+        }
+    }
+
+    private void displayTranslators(final Statement statement) throws SQLException {
+        System.out.println("Translator ID, Translator Name, Translator Salary");
+        try(final ResultSet rset = statement.executeQuery("select * from translator")) {
+            while (rset.next()) {
+                System.out.format("%1$-13s%2$-15s%3$-15s\n",
+                        rset.getInt(1), rset.getString(2), rset.getInt(3));
+            }
+        }
     }
 
     private enum Option {
