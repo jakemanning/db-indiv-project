@@ -15,7 +15,7 @@ public class OptionManager {
         try(final Scanner scanner = new Scanner(System.in)) {
             this.scanner = scanner;
             int input = getUserOption();
-            while(input != Option.QUIT.value) {
+            while(input != OptionManager.Option.QUIT.value) {
                 handleInput(input);
                 input = getUserOption();
             }
@@ -36,11 +36,11 @@ public class OptionManager {
     }
 
     private void handleInput(final int input) throws SQLException {
-        if(input == Option.INSERT.value) {
+        if(input == OptionManager.Option.INSERT.value) {
             insertCustomer();
-        } else if(input == Option.COMPENSATE.value) {
+        } else if(input == OptionManager.Option.COMPENSATE.value) {
             compensateTranslators();
-        } else if(input == Option.DISPLAY.value) {
+        } else if(input == OptionManager.Option.DISPLAY.value) {
             display();
         } else {
             System.out.println("Invalid input.");
