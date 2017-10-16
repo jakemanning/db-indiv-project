@@ -20,6 +20,8 @@ public class Driver {
             manager.handleOptions();
         } catch(Exception e) {
             e.printStackTrace();
+        } finally {
+            closeConnection(dbConnection);
         }
     }
 
@@ -45,6 +47,16 @@ public class Driver {
         } catch(IOException i) {
             i.printStackTrace();
             return null;
+        }
+    }
+
+    private static void closeConnection(final Connection connection) {
+        try {
+            if(connection != null) {
+                connection.close();
+            }
+        } catch(SQLException s) {
+            System.err.println(s.getMessage());
         }
     }
 }
