@@ -17,8 +17,6 @@ public class Driver {
             System.out.println("Welcome to the PAN Client and Donor Database System");
             final OptionManager manager = new OptionManager(dbConnection);
             manager.handleOptions();
-        } catch(SQLException s) {
-            System.err.println(s.getMessage());
         } catch(Exception e) {
             e.printStackTrace();
         }

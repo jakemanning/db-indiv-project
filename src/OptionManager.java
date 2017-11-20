@@ -29,12 +29,16 @@ public class OptionManager {
         this.connection = connection;
     }
 
-    public void handleOptions() throws SQLException {
+    public void handleOptions() {
         try(final Scanner scanner = new Scanner(System.in)) {
             this.scanner = scanner;
             int input = getUserOption();
             while(input != OptionManager.Option.QUIT.value) {
-                handleInput(input);
+                try {
+                    handleInput(input);
+                } catch(SQLException s) {
+                    System.err.println(s.getMessage());
+                }
                 input = getUserOption();
             }
             System.out.println("Thank you for using PAN");
@@ -116,7 +120,7 @@ public class OptionManager {
             System.out.println("Importing File");
         } else if(input == OptionManager.Option.EXPORT_MAILING_LIST.value) { // 19
             System.out.println("Export to File");
-        } else if(input == OptionManager.Option.DISPLAY_OPTIONS.value) {
+        } else if(input == OptionManager.Option.DISPLAY_OPTIONS.value) { // 21
             displayOptions();
         } else {
             System.out.println("Invalid input.");
