@@ -12,7 +12,7 @@ public class Driver {
         final String url = "jdbc:oracle:thin:@//oracle.cs.ou.edu:1521/pdborcl.cs.ou.edu";
         System.out.println("Connecting...");
         Credentials credentials = new Credentials();
-        try(Connection dbConnection = DriverManager.getConnection(url, credentials.username, credentials.password)) {
+        try(Connection dbConnection = DriverManager.getConnection(url, "mann7942", "FYkk6Nb5")) {
             System.out.println("Connected\n");
             System.out.println("Welcome to the PAN Client and Donor Database System");
             final OptionManager manager = new OptionManager(dbConnection);

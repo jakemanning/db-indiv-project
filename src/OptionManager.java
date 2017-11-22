@@ -1,9 +1,13 @@
 import oracle.jdbc.OracleTypes;
 
+import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.sql.*;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.InputMismatchException;
+import java.util.List;
 import java.util.Scanner;
 
 public class OptionManager {
@@ -37,7 +41,9 @@ public class OptionManager {
                 try {
                     handleInput(input);
                 } catch(SQLException s) {
-                    System.err.println(s.getMessage());
+                    System.err.println(s.getMessage()); // Handle any errors
+                } catch(Exception e) {
+                    e.printStackTrace();
                 }
                 input = getUserOption();
             }
@@ -58,7 +64,7 @@ public class OptionManager {
         }
     }
 
-    private void handleInput(final int input) throws SQLException {
+    private void handleInput(final int input) throws SQLException, IOException {
         if(input == OptionManager.Option.INSERT_TEAM.value) { // 1
             System.out.println("Inserting team");
             insertTeam();
@@ -118,8 +124,10 @@ public class OptionManager {
             deleteHealthClients();
         } else if(input == OptionManager.Option.IMPORT_FROM_FILE.value) { // 18
             System.out.println("Importing File");
+            importTeams();
         } else if(input == OptionManager.Option.EXPORT_MAILING_LIST.value) { // 19
             System.out.println("Export to File");
+            exportMailingList();
         } else if(input == OptionManager.Option.DISPLAY_OPTIONS.value) { // 21
             displayOptions();
         } else {
@@ -166,6 +174,10 @@ public class OptionManager {
         final String leaderSSN = insertPersonIfWant(Person.Volunteer);
         final String teamName = getStringInput("Enter team name");
 
+        insertTeamInfo(teamName, reportSSN, leaderSSN);
+    }
+
+    private void insertTeamInfo(String teamName, String reportSSN, String leaderSSN) throws SQLException{
         try(final CallableStatement pstmt = connection.prepareCall("{call insertions.insert_team(?,?,?)}")) {
             pstmt.setString(1, teamName);
             pstmt.setString(2, reportSSN);
@@ -175,9 +187,12 @@ public class OptionManager {
         System.out.format("Inserted (%s, %s, %s)\n\n", teamName, reportSSN, leaderSSN);
     }
 
+    /*
+        Returns the ssn of the created person, or a ssn provided by them
+     */
     private String insertPersonIfWant(Person type) throws SQLException {
         if(!getBoolInput("Insert Person Info?")) {
-            return getStringInput("Then give me a ssn");
+            return getStringInput("Then give me a ssn"); // If the user doesn't want to insert a client
         }
 
         final String emailAddress = insertContactInformation();
@@ -200,7 +215,7 @@ public class OptionManager {
             pstmt.setLong(5, cellNumber);
             pstmt.executeUpdate();
         }
-        System.out.format("Inserted (%s, %s, %d, %d, %d)\n\n", emailAddress, mailingAddress, homeNumber, mobileNumber, cellNumber);
+        System.out.format("Inserted (%s, %s, %s, %s, %s)\n\n", emailAddress, mailingAddress, homeNumber, mobileNumber, cellNumber);
         return emailAddress;
     }
 
@@ -225,9 +240,9 @@ public class OptionManager {
             pstmt.setInt(8, shouldEmail);
             pstmt.executeUpdate();
         }
-        System.out.format("Inserted (%s, %s, %s, %s, %s, %d, %s, %d)\n\n", emailAddress, ssn, fullName, dob.toString(), race, gender, profession, shouldEmail);
-        insertEmergencyContact(ssn, emailAddress);
-        insertPersonType(ssn,  type);
+        System.out.format("Inserted (%s, %s, %s, %s, %s, %s, %s, %s)\n\n", emailAddress, ssn, fullName, dob, race, gender, profession, shouldEmail);
+        insertEmergencyContact(ssn, emailAddress); // All people require emergency contacts
+        insertPersonType(ssn, type);
         return ssn;
     }
 
@@ -255,7 +270,7 @@ public class OptionManager {
         } else if (type == Person.Client) {
             insertClient(ssn);
         } else if (type == Person.Donor) {
-            // No action necessary
+            // No action necessary, handled elsewhere
         }
     }
 
@@ -272,7 +287,7 @@ public class OptionManager {
             pstmt.setDate(4, hireDate);
             pstmt.executeUpdate();
         }
-        System.out.format("Inserted (%s, %d, %s, %s)\n\n", ssn, salary, maritalStatus, hireDate.toString());
+        System.out.format("Inserted (%s, %s, %s, %s)\n\n", ssn, salary, maritalStatus, hireDate);
     }
 
     private void insertVolunteer(final String ssn) throws SQLException {
@@ -287,7 +302,7 @@ public class OptionManager {
             pstmt.setString(4, locationTrainedCourse);
             pstmt.executeUpdate();
         }
-        System.out.format("Inserted (%s, %s, %s, %s)\n\n", ssn, joinDate.toString(), dateTrainedCourse.toString(), locationTrainedCourse);
+        System.out.format("Inserted (%s, %s, %s, %s)\n\n", ssn, joinDate, dateTrainedCourse, locationTrainedCourse);
     }
 
     private void insertClient(final String ssn) throws SQLException {
@@ -306,8 +321,8 @@ public class OptionManager {
             pstmt.executeUpdate();
         }
         System.out.format("Inserted (%s, %s, %s, %s, %s)\n\n", ssn, doctorName, doctorPhone, attorneyName, attorneyPhone);
-        insertPolicy(ssn);
-        insertClientNeed(ssn);
+        insertPolicy(ssn); // All clients require insurance policies
+        insertClientNeed(ssn); // All clients require needs
     }
 
     private void insertDonor(final String ssn) throws SQLException {
@@ -319,42 +334,49 @@ public class OptionManager {
         final int isAnonymous = boolProcedureArgs("Is anonymous?");
 
         if(getBoolInput("Pay with credit?")) {
-            System.out.println("Entering Credit Payment");
-
-            final String creditCard = getStringInput("Enter credit card number");
-            final String cardType = getStringInput("Enter card type");
-            final java.sql.Date expirationDate = dateProcedureArgs("Enter expirationDate");
-            try(final CallableStatement pstmt = connection.prepareCall("{call insertions.insert_indiv_donation_credit(?,?,?,?,?,?,?,?,?)}")) {
-                pstmt.setString(1, ssn);
-                pstmt.setDate(2, dateDonated);
-                pstmt.setInt(3, amount);
-                pstmt.setString(4, type);
-                pstmt.setString(5, campaignName);
-                pstmt.setInt(6, isAnonymous);
-                pstmt.setString(7, creditCard);
-                pstmt.setString(8, cardType);
-                pstmt.setDate(9, expirationDate);
-                pstmt.executeUpdate();
-            }
-            System.out.format("Inserted (%s, %s, %s, %s, %s, %s, %s, %s, %s)\n\n", ssn, dateDonated.toString(), amount, type, campaignName, isAnonymous, creditCard, cardType, expirationDate.toString());
-
+            insertIndivCreditPayment(ssn, dateDonated, amount, type, campaignName, isAnonymous);
         } else {
-            System.out.println("Entering Check Payment");
-
-            final String check = getStringInput("Enter check number");
-
-            try(final CallableStatement pstmt = connection.prepareCall("{call insertions.insert_indiv_donation_check(?,?,?,?,?,?,?)}")) {
-                pstmt.setString(1, ssn);
-                pstmt.setDate(2, dateDonated);
-                pstmt.setInt(3, amount);
-                pstmt.setString(4, type);
-                pstmt.setString(5, campaignName);
-                pstmt.setInt(6, isAnonymous);
-                pstmt.setString(7, check);
-                pstmt.executeUpdate();
-            }
-            System.out.format("Inserted (%s, %s, %s, %s, %s, %s, %s)\n\n", ssn, dateDonated.toString(), amount, type, campaignName, isAnonymous, check);
+            insertIndivCheckPayment(ssn, dateDonated, amount, type, campaignName, isAnonymous);
         }
+    }
+
+    private void insertIndivCreditPayment(String ssn, Date dateDonated, int amount, String type, String campaignName, int isAnonymous) throws SQLException {
+        System.out.println("Entering Credit Payment");
+
+        final String creditCard = getStringInput("Enter credit card number");
+        final String cardType = getStringInput("Enter card type");
+        final Date expirationDate = dateProcedureArgs("Enter expirationDate");
+        try(final CallableStatement pstmt = connection.prepareCall("{call insertions.insert_indiv_donation_credit(?,?,?,?,?,?,?,?,?)}")) {
+            pstmt.setString(1, ssn);
+            pstmt.setDate(2, dateDonated);
+            pstmt.setInt(3, amount);
+            pstmt.setString(4, type);
+            pstmt.setString(5, campaignName);
+            pstmt.setInt(6, isAnonymous);
+            pstmt.setString(7, creditCard);
+            pstmt.setString(8, cardType);
+            pstmt.setDate(9, expirationDate);
+            pstmt.executeUpdate();
+        }
+        System.out.format("Inserted (%s, %s, %s, %s, %s, %s, %s, %s, %s)\n\n", ssn, dateDonated.toString(), amount, type, campaignName, isAnonymous, creditCard, cardType, expirationDate);
+    }
+
+    private void insertIndivCheckPayment(String ssn, Date dateDonated, int amount, String type, String campaignName, int isAnonymous) throws SQLException {
+        System.out.println("Entering Check Payment");
+
+        final String check = getStringInput("Enter check number");
+
+        try(final CallableStatement pstmt = connection.prepareCall("{call insertions.insert_indiv_donation_check(?,?,?,?,?,?,?)}")) {
+            pstmt.setString(1, ssn);
+            pstmt.setDate(2, dateDonated);
+            pstmt.setInt(3, amount);
+            pstmt.setString(4, type);
+            pstmt.setString(5, campaignName);
+            pstmt.setInt(6, isAnonymous);
+            pstmt.setString(7, check);
+            pstmt.executeUpdate();
+        }
+        System.out.format("Inserted (%s, %s, %s, %s, %s, %s, %s)\n\n", ssn, dateDonated.toString(), amount, type, campaignName, isAnonymous, check);
     }
 
     private void insertPolicy(final String ssn) throws SQLException {
@@ -396,12 +418,12 @@ public class OptionManager {
             final int isActive = boolProcedureArgs("Is active");
 
             try(final CallableStatement pstmt = connection.prepareCall("{call insertions." + query + "(?,?,?)}")) {
-                pstmt.setString(1, ssn);
-                pstmt.setString(2, teamName);
+                pstmt.setString(1, teamName);
+                pstmt.setString(2, ssn);
                 pstmt.setInt(3, isActive);
                 pstmt.executeUpdate();
             }
-            System.out.format("Inserted (%s, %s, %s)\n\n", ssn, teamName, isActive);
+            System.out.format("Associated (%s, %s, %s)\n\n", teamName, ssn, isActive);
         } while(getBoolInput("Associate with another team?"));
     }
 
@@ -415,7 +437,7 @@ public class OptionManager {
                 pstmt.setString(2, teamName);
                 pstmt.executeUpdate();
             }
-            System.out.format("Inserted (%s, %s)\n\n", ssn, teamName);
+            System.out.format("Associated (%s, %s)\n\n", ssn, teamName);
         } while(getBoolInput("Associate with another team?"));
     }
 
@@ -433,7 +455,7 @@ public class OptionManager {
             pstmt.setInt(4, hoursWorked);
             pstmt.executeUpdate();
         }
-        System.out.format("Inserted (%s, %s, %s)\n\n", ssn, teamName, workMonth, hoursWorked);
+        System.out.format("Inserted (%s, %s, %s, %s)\n\n", ssn, teamName, workMonth, hoursWorked);
     }
 
     private void insertExpense() throws SQLException {
@@ -450,10 +472,13 @@ public class OptionManager {
             pstmt.setString(4, description);
             pstmt.executeUpdate();
         }
-        System.out.format("Inserted (%s, %s, %s, %s)\n\n", ssn, dateEntered.toString(), amount, description);
+        System.out.format("Inserted (%s, %s, %s, %s)\n\n", ssn, dateEntered, amount, description);
     }
 
     private String insertOrganization() throws SQLException {
+        if(!getBoolInput("Enter organization?")) {
+            return getStringInput("Then enter an org name");
+        }
         System.out.println("Entering organization");
         final String orgName = getStringInput("Enter org name");
         final String mailingAddress = getStringInput("Enter mailing address");
@@ -514,40 +539,47 @@ public class OptionManager {
         final String campaignName = getStringInput("Enter campaign name");
 
         if(getBoolInput("Pay with credit?")) {
-            System.out.println("Entering Credit Payment");
-
-            final String creditCard = getStringInput("Enter credit card number");
-            final String cardType = getStringInput("Enter card type");
-            final java.sql.Date expirationDate = dateProcedureArgs("Enter expirationDate");
-            try(final CallableStatement pstmt = connection.prepareCall("{call insertions.insert_org_donation_credit(?,?,?,?,?,?,?,?)}")) {
-                pstmt.setString(1, orgName);
-                pstmt.setDate(2, dateDonated);
-                pstmt.setInt(3, amount);
-                pstmt.setString(4, type);
-                pstmt.setString(5, campaignName);
-                pstmt.setString(6, creditCard);
-                pstmt.setString(7, cardType);
-                pstmt.setDate(8, expirationDate);
-                pstmt.executeUpdate();
-            }
-            System.out.format("Inserted (%s, %s, %s, %s, %s, %s, %s, %s)\n\n", orgName, dateDonated.toString(), amount, type, campaignName, creditCard, cardType, expirationDate.toString());
-
+            insertOrgCreditPayment(orgName, dateDonated, amount, type, campaignName);
         } else {
-            System.out.println("Entering Check Payment");
-
-            final String check = getStringInput("Enter check number");
-
-            try(final CallableStatement pstmt = connection.prepareCall("{call insertions.insert_org_donation_check(?,?,?,?,?,?)}")) {
-                pstmt.setString(1, orgName);
-                pstmt.setDate(2, dateDonated);
-                pstmt.setInt(3, amount);
-                pstmt.setString(4, type);
-                pstmt.setString(5, campaignName);
-                pstmt.setString(6, check);
-                pstmt.executeUpdate();
-            }
-            System.out.format("Inserted (%s, %s, %s, %s, %s, %s, %s)\n\n", orgName, dateDonated.toString(), amount, type, campaignName, check);
+            insertOrgCheckPayment(orgName, dateDonated, amount, type, campaignName);
         }
+    }
+
+    private void insertOrgCreditPayment(String orgName, Date dateDonated, int amount, String type, String campaignName) throws SQLException {
+        System.out.println("Entering Credit Payment");
+
+        final String creditCard = getStringInput("Enter credit card number");
+        final String cardType = getStringInput("Enter card type");
+        final Date expirationDate = dateProcedureArgs("Enter expirationDate");
+        try(final CallableStatement pstmt = connection.prepareCall("{call insertions.insert_org_donation_credit(?,?,?,?,?,?,?,?)}")) {
+            pstmt.setString(1, orgName);
+            pstmt.setDate(2, dateDonated);
+            pstmt.setInt(3, amount);
+            pstmt.setString(4, type);
+            pstmt.setString(5, campaignName);
+            pstmt.setString(6, creditCard);
+            pstmt.setString(7, cardType);
+            pstmt.setDate(8, expirationDate);
+            pstmt.executeUpdate();
+        }
+        System.out.format("Inserted (%s, %s, %s, %s, %s, %s, %s, %s)\n\n", orgName, dateDonated.toString(), amount, type, campaignName, creditCard, cardType, expirationDate);
+    }
+
+    private void insertOrgCheckPayment(String orgName, Date dateDonated, int amount, String type, String campaignName) throws SQLException {
+        System.out.println("Entering Check Payment");
+
+        final String check = getStringInput("Enter check number");
+
+        try(final CallableStatement pstmt = connection.prepareCall("{call insertions.insert_org_donation_check(?,?,?,?,?,?)}")) {
+            pstmt.setString(1, orgName);
+            pstmt.setDate(2, dateDonated);
+            pstmt.setInt(3, amount);
+            pstmt.setString(4, type);
+            pstmt.setString(5, campaignName);
+            pstmt.setString(6, check);
+            pstmt.executeUpdate();
+        }
+        System.out.format("Inserted (%s, %s, %s, %s, %s, %s)\n\n", orgName, dateDonated.toString(), amount, type, campaignName, check);
     }
 
     private void displayNameAndPhone() throws SQLException {
@@ -565,12 +597,16 @@ public class OptionManager {
     }
 
     private void displayExpenseAmount() throws SQLException {
-        try(final CallableStatement pstmt = connection.prepareCall("{call retrievals.retrieve_expense_amount(?)}")) {
-            pstmt.registerOutParameter(1, OracleTypes.CURSOR);
+        final java.sql.Date start = dateProcedureArgs("Between");
+        final java.sql.Date end = dateProcedureArgs("and");
+        try(final CallableStatement pstmt = connection.prepareCall("{call retrievals.retrieve_expense_amount(?,?,?)}")) {
+            pstmt.setDate(1, start);
+            pstmt.setDate(2, end);
+            pstmt.registerOutParameter(3, OracleTypes.CURSOR);
             pstmt.executeUpdate();
 
             System.out.println("SSN | total_amount");
-            final ResultSet rs = (ResultSet) pstmt.getObject(1);
+            final ResultSet rs = (ResultSet) pstmt.getObject(3);
             while(rs.next()) {
                 String ssn = rs.getString("ssn");
                 long totalAmount = rs.getLong("total_amount");
@@ -606,9 +642,9 @@ public class OptionManager {
                 String fullName = rs.getString("full_name");
                 String emailAddr = rs.getString("email_addr");
                 String mailingAddr = rs.getString("mailing_addr");
-                int homeNumber = rs.getInt("home_number");
-                int mobileNumber = rs.getInt("mobile_number");
-                int cellNumber = rs.getInt("cell_number");
+                long homeNumber = rs.getLong("home_number");
+                long mobileNumber = rs.getLong("mobile_number");
+                long cellNumber = rs.getLong("cell_number");
                 System.out.format("%s, %s, %s, %s, %s, %s\n", fullName, emailAddr, mailingAddr, homeNumber, mobileNumber, cellNumber);
             }
         }
@@ -641,9 +677,9 @@ public class OptionManager {
                 String fullName = rs.getString("full_name");
                 String emailAddr = rs.getString("email_addr");
                 String mailingAddr = rs.getString("mailing_addr");
-                int homeNumber = rs.getInt("home_number");
-                int mobileNumber = rs.getInt("mobile_number");
-                int cellNumber = rs.getInt("cell_number");
+                long homeNumber = rs.getLong("home_number");
+                long mobileNumber = rs.getLong("mobile_number");
+                long cellNumber = rs.getLong("cell_number");
                 System.out.format("%s, %s, %s, %s, %s, %s\n", fullName, emailAddr, mailingAddr, homeNumber, mobileNumber, cellNumber);
             }
         }
@@ -661,6 +697,44 @@ public class OptionManager {
             pstmt.executeUpdate();
         }
         System.out.println("Deleted health clients");
+    }
+
+    private void importTeams() throws IOException, SQLException {
+        final String fileName = getStringInput("Enter file name");
+        List<String> rows = Files.readAllLines(Paths.get(fileName));
+        for(String row : rows) {
+            String[] teamAttributes = row.split("\\s?,\\s?");
+            final String teamName = teamAttributes[0];
+            final String reportedEmployeeSSN = teamAttributes[1];
+            final String leaderSSN = teamAttributes[2];
+            insertTeamInfo(teamName, reportedEmployeeSSN, leaderSSN);
+        }
+        System.out.println("Imported teams");
+    }
+
+    private void exportMailingList() throws SQLException, IOException {
+        final String fileName = getStringInput("Enter file name");
+        try(BufferedWriter bufferedWriter = new BufferedWriter(new FileWriter(new File(fileName)))) {
+            retrieveAndWriteMailingList(bufferedWriter);
+        }
+        System.out.println("Exported mailing list");
+    }
+
+    private void retrieveAndWriteMailingList(BufferedWriter bufferedWriter) throws SQLException, IOException {
+        try(final CallableStatement pstmt = connection.prepareCall("{call retrievals.retrieve_mailing_list(?)}")) {
+            pstmt.registerOutParameter(1, OracleTypes.CURSOR);
+            pstmt.executeUpdate();
+
+            final ResultSet rs = (ResultSet) pstmt.getObject(1);
+            bufferedWriter.write("full_name,email_addr");
+            bufferedWriter.newLine();
+            while (rs.next()) {
+                String fullName = rs.getString("full_name").replace("\"", "\"\""); // Escapes any commas in query
+                String emailAddr = rs.getString("email_addr").replace("\"", "\"\""); // Escapes any commas in addr
+                bufferedWriter.write(String.format("\"%s\",\"%s\"", fullName, emailAddr));
+                bufferedWriter.newLine();
+            }
+        }
     }
 
     private void displayOptions() {
